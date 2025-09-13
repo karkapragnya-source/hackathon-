@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AI Finance — Predictive Dashboard (HTML/CSS/JS)</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{--bg:#f7fafc;--card:#fff;--muted:#6b7280;--accent:#4f46e5;--success:#10b981;}
+    body{font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial; background:var(--bg); margin:0; color:#111}
+    .container{max-width:1100px;margin:28px auto;padding:20px}
+    header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+    h1{font-size:20px;margin:0}
+    .grid{display:grid;gap:16px}
+    .cards-3{grid-template-columns:repeat(3,1fr)}
+    .main-layout{display:grid;grid-template-columns:2fr 1fr;gap:18px;margin-top:12px}
+    .card{background:var(--card);padding:14px;border-radius:12px;box-shadow:0 1px 6px rgba(0,0,0,0.05)}
+    .muted{color:var(--muted);font-size:13px}
+    .big{font-size:22px;font-weight:700}
+    .small{font-size:13px}
+    .transactions{max-height:360px;overflow:auto}
+    .tx{display:flex;justify-content:space-between;padding:8px 6px;border-radius:8px}
+    .tx:hover{background:#f3f4f6}
+    label{display:block;font-size:13px;margin-bottom:6px}
+    input,select,button{padding:8px;border-radius:8px;border:1px solid #e5e7eb;font-size:14px}
+    button{background:var(--accent);color:white;border:none;cursor:pointer}
+    .progress{background:#e6f4ea;border-radius:999px;height:10px;overflow:hidden}
+    .progress > i{display:block;height:100%;background:var(--success)}
+    .alerts{color:#b91c1c}
+    footer{margin-top:20px;text-align:center;color:var(--muted);font-size:12px}
+    @media(max-width:880px){.main-layout{grid-template-columns:1fr}.cards-3{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>AI Finance — Predictive Dashboard</h1>
+      <div class="muted">Monthly budget: <strong id="budgetDisplay">₹2000</strong></div>
+    </header>
+
+    <div class="grid cards-3">
+      <div class="card">
+        <div class="muted">Forecast (monthly)</div>
+        <div class="big" id="forecastValue">₹—</div>
+        <div class="muted small" id="forecastTrend">Trend: —</div>
+      </div>
+
+      <div class="card" id="goalsCard">
+        <div class="muted">Goals</div>
+        <div id="goalsList"></div>
+      </div>
+
+      <div class="card">
+        <div class="muted">Alerts</div>
+        <div id="alerts" class="alerts">No alerts</div>
+      </div>
+    </div>
+
+    <div class="main-layout">
+      <main>
+        <section class="card" style="margin-bottom:16px">
+          <h3 style="margin-top:0">Spending (last 6 months)</h3>
+          <canvas id="spendChart" height="140"></canvas>
+        </section>
+
+        <section class="card">
+          <h3 style="margin-top:0">Transactions</h3>
+          <div style="margin-bottom:8px">
+            <label>Filter by category</label>
+            <select id="filterCat"><option value="All">All</option></select>
+          </div>
+          <div class="transactions" id="txList"></div>
+        </section>
+      </main>
+
+      <aside>
+        <section class="card" style="margin-bottom:16px">
+          <h4 style="margin:0 0 8px 0">Category Breakdown</h4>
+          <canvas id="pieChart" height="140"></canvas>
+        </section>
+
+        <section class="card" style="margin-bottom:16px">
+          <h4 style="margin:0 0 8px 0">Quick Add Transaction</h4>
+          <label>Merchant</label>
+          <input id="inMerchant" placeholder="e.g., Local Store" />
+          <label style="margin-top:8px">Description</label>
+          <input id="inDesc" placeholder="monthly groceries" />
+          <label style="margin-top:8px">Amount (₹) — positive = expense</label>
+          <input id="inAmount" type="number" placeholder="120" />
+          <label style="margin-top:8px">Date</label>
+          <input id="inDate" type="date" />
+          <div style="margin-top:8px"><button id="btnAdd">Add Transaction</button></div>
+        </section>
+
+        <section class="card">
+          <h4 style="margin:0 0 8px 0">Budget</h4>
+          <label>Monthly budget (₹)</label>
+          <input id="budgetInput" type="number" value="2000" />
+        </section>
+
+      </aside>
+    </div>
+
+    <footer>Single-file HTML/CSS/JS prototype — replace mocks with real APIs for production.</footer>
+  </div>
+
+  <script>
+    // Simple single-file app with mocked ML behaviour (rule-based categorizer + simple forecast)
+    const CATEGORIES = ['Groceries','Transport','Dining','Utilities','Entertainment','Income','Others'];
+
+    function simpleCategorize(tx){
+      const text = ((tx.merchant||'') + ' ' + (tx.description||'')).toLowerCase();
+      if (/uber|ola|taxi|auto|cab/.test(text)) return 'Transport';
+      if (/walmart|grocery|bigbasket|store|supermarket|aldi|trader joe|grocer|mart/.test(text)) return 'Groceries';
+      if (/restaurant|cafe|starbucks|diner|pizza|bar|restaurant/.test(text)) return 'Dining';
+      if (/netflix|spotify|prime|hulu|movie|theatre|subscription/.test(text)) return 'Entertainment';
+      if (/salary|payroll|transfer|deposit/.test(text)) return 'Income';
+      if (/electric|water|gas|utility|phone|bill/.test(text)) return 'Utilities';
+      return 'Others';
+    }
+
+    // Mock transactions
+    let transactions = [];
+    function generateMock(){
+      const merchants = ['Walmart','Uber','Starbucks','Netflix','Electric Co','Salary Inc','BigBasket','Local Diner'];
+      const descs = ['monthly groceries','ride to office','coffee','subscription fee','electric bill','monthly salary','online groceries','lunch'];
+      const now = new Date();
+      for(let i=0;i<80;i++){
+        const daysBack = Math.floor(Math.random()*180);
+        const d = new Date(now.getTime() - daysBack*24*60*60*1000);
+        const amount = Math.round((Math.random()*120 + (Math.random()<0.1?1000:0)) * (Math.random()<0.08? -1:1));
+        const merchant = merchants[Math.floor(Math.random()*merchants.length)];
+        const description = descs[Math.floor(Math.random()*descs.length)];
+        const tx = { id: i+1, date: d.toISOString().slice(0,10), amount: Math.abs(amount), merchant, description };
+        tx.category = simpleCategorize(tx);
+        transactions.push(tx);
+      }
+      // add some incomes (negative in UI treated separately)
+      transactions.push({id:999,date:new Date().toISOString().slice(0,10), amount:5000, merchant:'Salary Inc', description:'monthly salary', category:'Income'});
+      transactions.sort((a,b)=> new Date(b.date) - new Date(a.date));
+    }
+
+    generateMock();
+
+    // App state
+    let budget = 2000;
+    let goals = [{id:1,name:'Emergency Fund',target:5000,saved:1200,deadline:'2025-12-31'}];
+
+    // DOM refs
+    const txList = document.getElementById('txList');
+    const filterCat = document.getElementById('filterCat');
+    const budgetInput = document.getElementById('budgetInput');
+    const budgetDisplay = document.getElementById('budgetDisplay');
+    const alertsEl = document.getElementById('alerts');
+    const goalsList = document.getElementById('goalsList');
+    const forecastValue = document.getElementById('forecastValue');
+    const forecastTrend = document.getElementById('forecastTrend');
+    const inMerchant = document.getElementById('inMerchant');
+    const inDesc = document.getElementById('inDesc');
+    const inAmount = document.getElementById('inAmount');
+    const inDate = document.getElementById('inDate');
+    const btnAdd = document.getElementById('btnAdd');
+
+    // Charts
+    let spendChart, pieChart;
+    function initCharts(){
+      const ctx = document.getElementById('spendChart').getContext('2d');
+      spendChart = new Chart(ctx, {
+        type:'line',
+        data:{labels:[], datasets:[{label:'Monthly spend',data:[],fill:true,tension:0.3}]},
+        options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}
+      });
+
+      const pctx = document.getElementById('pieChart').getContext('2d');
+      pieChart = new Chart(pctx,{type:'doughnut',data:{labels:[],datasets:[{data:[],backgroundColor: ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2']}]},options:{plugins:{legend:{position:'bottom'}}}});
+    }
+
+    function updateCharts(){
+      // spend last 6 months
+      const now = new Date();
+      const labels = [];
+      const values = [];
+      for(let i=5;i>=0;i--){
+        const d = new Date(now.getFullYear(), now.getMonth()-i,1);
+        labels.push(d.toLocaleString('default',{month:'short', year:'numeric'}));
+      }
+      labels.forEach(l=> values.push(0));
+
+      transactions.forEach(t=>{
+        const d = new Date(t.date); const key = d.toLocaleString('default',{month:'short', year:'numeric'});
+        const idx = labels.indexOf(key);
+        if (idx>=0 && t.category !== 'Income') values[idx]+= t.amount;
+      });
+      spendChart.data.labels = labels; spendChart.data.datasets[0].data = values; spendChart.update();
+
+      // pie
+      const catMap = {};
+      transactions.forEach(t=>{ if (t.category !== 'Income'){ catMap[t.category] = (catMap[t.category]||0) + t.amount }});
+      const pieLabels = Object.keys(catMap); const pieValues = pieLabels.map(k=>catMap[k]);
+      pieChart.data.labels = pieLabels; pieChart.data.datasets[0].data = pieValues; pieChart.update();
+    }
+
+    function renderFilterOptions(){
+      filterCat.innerHTML = '<option value="All">All</option>';
+      CATEGORIES.forEach(c=>{ const opt = document.createElement('option'); opt.value=c; opt.textContent=c; filterCat.appendChild(opt); });
+    }
+
+    function renderTransactions(){
+      const sel = filterCat.value;
+      txList.innerHTML = '';
+      transactions.filter(t=> sel==='All' || t.category===sel).slice(0,200).forEach(tx=>{
+        const el = document.createElement('div'); el.className='tx';
+        el.innerHTML = `<div><div style="font-weight:600">${tx.merchant} <span style="color:#6b7280;font-weight:400">• ${tx.description}</span></div><div class="muted">${tx.date}</div></div><div style="text-align:right"><div style="font-weight:700">₹${tx.amount}</div><div style="margin-top:4px"><select data-id="${tx.id}"></select></div></div>`;
+        txList.appendChild(el);
+        const selEl = el.querySelector('select'); CATEGORIES.forEach(c=>{ const op=document.createElement('option'); op.value=c; op.text=c; selEl.appendChild(op); }); selEl.value = tx.category;
+        selEl.addEventListener('change', (e)=>{ const id = Number(e.target.dataset.id); const newCat = e.target.value; transactions = transactions.map(t=> t.id===id? {...t, category:newCat} : t); updateAll(); });
+      });
+    }
+
+    function runBudgetCheck(){
+      const now = new Date(); const monthKey = now.getFullYear()+'-'+(now.getMonth()+1);
+      let monthlySpent = 0;
+      transactions.forEach(t=>{ const d = new Date(t.date); const key = d.getFullYear()+'-'+(d.getMonth()+1); if (key===monthKey && t.category!=='Income') monthlySpent += t.amount });
+      const alerts = [];
+      if (monthlySpent > budget) alerts.push(`You've spent ₹${monthlySpent} this month — over your ₹${budget} budget.`);
+      else if (monthlySpent > budget*0.8) alerts.push(`You're at ${Math.round((monthlySpent/budget)*100)}% of your budget.`);
+      alertsEl.innerHTML = alerts.length? alerts.join('<br>') : 'No alerts';
+    }
+
+    function runForecast(){
+      // simple: average of previous months
+      const now = new Date(); const months = {};
+      transactions.forEach(t=>{ const d=new Date(t.date); const key = d.getFullYear()+'-'+(d.getMonth()+1); if (!months[key]) months[key]=0; if (t.category!=='Income') months[key]+=t.amount });
+      const vals = Object.values(months); const avg = vals.length? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : 0; const lastKey = now.getFullYear()+'-'+(now.getMonth()+1); const last = months[lastKey]||avg; const trend = last>avg? 'up' : last<avg? 'down' : 'flat';
+      forecastValue.textContent = '₹' + avg; forecastTrend.textContent = 'Trend: ' + trend; 
+    }
+
+    function renderGoals(){
+      goalsList.innerHTML = '';
+      goals.forEach(g=>{
+        const pct = Math.round((g.saved/g.target)*100);
+        const wrapper = document.createElement('div'); wrapper.style.marginBottom='10px';
+        wrapper.innerHTML = `<div style="display:flex;justify-content:space-between;font-size:14px"><div>${g.name}</div><div>${pct}%</div></div><div class="progress" style="margin-top:6px"><i style="width:${Math.min(100,pct)}%"></i></div><div class="muted small" style="margin-top:6px">Target ₹${g.target} • Deadline ${g.deadline}</div>`;
+        goalsList.appendChild(wrapper);
+      });
+    }
+
+    function updateAll(){
+      budgetDisplay.textContent = '₹' + budget;
+      renderFilterOptions(); renderTransactions(); renderGoals(); runBudgetCheck(); runForecast(); updateCharts();
+    }
+
+    // Event handlers
+    filterCat.addEventListener('change', renderTransactions);
+    budgetInput.addEventListener('input', (e)=>{ budget = Number(e.target.value||0); updateAll(); });
+    btnAdd.addEventListener('click', ()=>{
+      const m = inMerchant.value.trim(); const d = inDesc.value.trim(); const a = Number(inAmount.value||0); const date = inDate.value || new Date().toISOString().slice(0,10);
+      if (!m || !a) { alert('Please enter merchant and positive amount'); return; }
+      const tx = { id: Date.now(), merchant:m, description:d, amount: Math.abs(a), date, category: simpleCategorize({merchant:m,description:d}) };
+      transactions.unshift(tx); inMerchant.value=''; inDesc.value=''; inAmount.value=''; inDate.value=''; updateAll();
+    });
+
+    // Init
+    initCharts(); updateAll();
+
+    // Expose a tiny predictive hint when user corrects categories: (mock) collect corrections
+    // In real app: POST corrections to backend to improve model
+
+  </script>
+</body>
+</html>
